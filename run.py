@@ -18,13 +18,10 @@ def main():
     main_engine = MainEngine(event_engine)
 
     main_engine.add_gateway(SinopacGateway)
-    main_engine.add_gateway(BitfinexGateway)
-    main_engine.add_gateway(CtpGateway)
     main_engine.add_app(CtaStrategyApp)
     main_engine.add_app(CtaBacktesterApp)
     main_engine.add_app(AlgoTradingApp)
     main_engine.add_app(DataRecorderApp)
-
 
     main_window = MainWindow(main_engine, event_engine)
     main_window.showMaximized()
