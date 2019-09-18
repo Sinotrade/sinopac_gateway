@@ -215,11 +215,11 @@ class SinopacGateway(BaseGateway):
                 exchange=EXCHANGE_SINOPAC2VT["TSE"],
                 direction=Direction.LONG if float(
                     item['real_qty']) >= 0 else Direction.SHORT,
-                volume=float(item['real_qty']),
-                frozen=float(item['real_qty']) - float(item['qty']),
+                volume=float(item['real_qty'])/1000,
+                frozen=float(item['real_qty'])/1000 - float(item['qty'])/1000,
                 price=float(item['avgprice']),
                 pnl=float(item['unreal']),
-                yd_volume=float(item['qty']),
+                yd_volume=float(item['qty'])/1000,
                 gateway_name=self.gateway_name
             )
             self.on_position(pos)
