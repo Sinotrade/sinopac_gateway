@@ -35,6 +35,7 @@ from vnpy.trader.object import (
 EXCHANGE_VT2SINOPAC = {
     Exchange.TSE: "TSE",
     Exchange.TFE: "TFE",
+    Exchange.TFE: "TAIFEX"
 }
 EXCHANGE_SINOPAC2VT = {v: k for k, v in EXCHANGE_VT2SINOPAC.items()}
 
@@ -63,11 +64,52 @@ class SinopacGateway(BaseGateway):
         self.password = ""
         self.ticks = {}
         self.code2contract = {}
+
+        self.trades = set()
+
+        self.count = 0
+        self.interval = 10
+
+        self.thread = Thread(target=self.query_data)
+        self.query_funcs = [self.query_position, self.query_trade]
         self.api = sj.Shioaji()
 
     def activate_ca(self, ca_path, ca_password, ca_id):
         self.api.activate_ca(
             ca_path=ca_path, ca_passwd=ca_password, person_id=ca_id)
+
+    def query_trade(self):
+        self.api.update_status()
+        trades = self.api.list_trades()
+        for item in trades:
+            tradeid = item.status.order_id
+            if tradeid in self.trades:
+                continue
+            self.trades.add(tradeid)
+            trade = TradeData(
+                symbol=item.contract.code,
+                exchange=EXCHANGE_SINOPAC2VT[item.contract.exchange],
+                direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
+                tradeid=tradeid,
+                orderid=item.order.seqno,
+                price=float(item.order.price),
+                volume=float(item.order.quantity),
+                time=item.status.order_datetime,
+                gateway_name=self.gateway_name,
+            )
+            self.on_trade(trade)
+
+    def query_data(self):
+        """
+        Query all data necessary.
+        """
+        sleep(2.0)  # Wait 2 seconds till connection completed.
+
+        self.query_position()
+        self.query_trade()
+
+        # Start fixed interval query.
+        self.event_engine.register(EVENT_TIMER, self.process_timer_event)
 
     def connect(self, setting: dict):
 
@@ -90,9 +132,20 @@ class SinopacGateway(BaseGateway):
 
         self.api.quote.set_callback(self.quote_callback)
         self.write_log("行情接口连接成功")
+        self.thread.start()
 
     def proc_account(self, data):
         pass
+
+    def process_timer_event(self, event):
+        """"""
+        self.count += 1
+        if self.count < self.interval:
+            return
+        self.count = 0
+        func = self.query_funcs.pop(0)
+        func()
+        self.query_funcs.append(func)
 
     def query_contract(self):
         for category in self.api.Contracts.Futures:
@@ -104,6 +157,7 @@ class SinopacGateway(BaseGateway):
                     product=Product.FUTURES,
                     size=200,
                     pricetick=contract.unit,
+                    net_position=True,
                     min_volume=1,
                     gateway_name=self.gateway_name
                 )
@@ -122,6 +176,7 @@ class SinopacGateway(BaseGateway):
                     name=contract.name + contract.delivery_month,
                     product=Product.OPTION,
                     size=50,
+                    net_position=True,
                     pricetick=contract.unit,
                     min_volume=1,
                     gateway_name=self.gateway_name,
@@ -145,6 +200,7 @@ class SinopacGateway(BaseGateway):
                     name=contract.name,
                     product=Product.EQUITY,
                     size=1,
+                    net_position=False,
                     pricetick=contract.unit,
                     min_volume=1,
                     gateway_name=self.gateway_name
@@ -207,7 +263,7 @@ class SinopacGateway(BaseGateway):
 
     def query_position(self):
         """"""
-        self.write_log("***query_position")
+        self.api.get_stock_account_unreal_profitloss().update()
         data = self.api.get_stock_account_unreal_profitloss().data()["summary"]
         for item in data:
             pos = PositionData(
@@ -215,11 +271,11 @@ class SinopacGateway(BaseGateway):
                 exchange=EXCHANGE_SINOPAC2VT["TSE"],
                 direction=Direction.LONG if float(
                     item['real_qty']) >= 0 else Direction.SHORT,
-                volume=float(item['real_qty'])/1000,
-                frozen=float(item['real_qty'])/1000 - float(item['qty'])/1000,
+                volume=float(item['real_qty']) / 1000,
+                frozen=float(item['real_qty']) / 1000 - float(item['qty']) / 1000,
                 price=float(item['avgprice']),
                 pnl=float(item['unreal']),
-                yd_volume=float(item['qty'])/1000,
+                yd_volume=float(item['qty']) / 1000,
                 gateway_name=self.gateway_name
             )
             self.on_position(pos)
@@ -264,7 +320,7 @@ class SinopacGateway(BaseGateway):
             if tick:
                 self.on_tick(copy(tick))
         except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
+            exc_type, _, exc_tb = sys.exc_info()
             filename = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             self.write_log('[{}][{}][{}][{}]'.format(
                 exc_type, filename, exc_tb.tb_lineno, str(e)))
