@@ -4,9 +4,11 @@ import os
 import sys
 from copy import copy
 from datetime import datetime
-
+from threading import Thread
+from time import sleep
 import shioaji as sj
 from shioaji import constant
+
 from vnpy.trader.constant import (
     Direction,
     Exchange,
@@ -15,14 +17,26 @@ from vnpy.trader.constant import (
     Status,
     OrderType
 )
+from vnpy.trader.event import EVENT_TIMER
 from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import (
     TickData,
-    OrderRequest,
-    CancelRequest,
+    OrderData,
+    TradeData,
+    AccountData,
+    ContractData,
+    PositionData,
     SubscribeRequest,
-    ContractData
+    OrderRequest,
+    CancelRequest
 )
+
+
+EXCHANGE_VT2SINOPAC = {
+    Exchange.TSE: "TSE",
+    Exchange.TFE: "TFE",
+}
+EXCHANGE_SINOPAC2VT = {v: k for k, v in EXCHANGE_VT2SINOPAC.items()}
 
 
 class SinopacGateway(BaseGateway):
@@ -37,7 +51,8 @@ class SinopacGateway(BaseGateway):
         "憑證密碼": "",
         "環境": ["正式", "模擬"]
     }
-    exchanges = [Exchange.TFE, Exchange.TSE]
+
+    exchanges = list(EXCHANGE_SINOPAC2VT.values())
 
     def __init__(self, event_engine):
         """Constructor"""
@@ -55,7 +70,6 @@ class SinopacGateway(BaseGateway):
             ca_path=ca_path, ca_passwd=ca_password, person_id=ca_id)
 
     def connect(self, setting: dict):
-        """"""
 
         userid = setting['身份證字號']
         password = setting['密碼']
@@ -65,10 +79,11 @@ class SinopacGateway(BaseGateway):
             self.write_log(f"登入失败. [{exc}]")
             return
         self.write_log(f"登入成功. [{userid}]")
-        proc_account(api.)
+
         self.query_contract()
         self.write_log("合约查询成功")
-
+        self.query_position()
+        self.write_log("庫存部位查詢")
         if setting['憑證檔案路徑'] != "":
             self.activate_ca(setting['憑證檔案路徑'],
                              setting['憑證密碼'], setting['身份證字號'])
@@ -193,6 +208,21 @@ class SinopacGateway(BaseGateway):
     def query_position(self):
         """"""
         self.write_log("***query_position")
+        data = self.api.get_stock_account_unreal_profitloss().data()["summary"]
+        for item in data:
+            pos = PositionData(
+                symbol=item['stock'],
+                exchange=EXCHANGE_SINOPAC2VT["TSE"],
+                direction=Direction.LONG if float(
+                    item['real_qty']) >= 0 else Direction.SHORT,
+                volume=float(item['real_qty']),
+                frozen=float(item['real_qty']) - float(item['qty']),
+                price=float(item['avgprice']),
+                pnl=float(item['unreal']),
+                yd_volume=float(item['qty']),
+                gateway_name=self.gateway_name
+            )
+            self.on_position(pos)
 
     def close(self):
         """"""
@@ -219,7 +249,6 @@ class SinopacGateway(BaseGateway):
          'BidPrice': [247.5, 247.0, 246.5, 246.0, 245.5], 'BidVolume': [397, 389, 509, 703, 434],
          'Date': '2019/05/17', 'Time': '09:53:00.706928'}
         """
-
         try:
             topics = topic.split('/')
             realtime_type = topics[0]
@@ -308,12 +337,13 @@ class SinopacGateway(BaseGateway):
     def quote_stock_MKT(self, code, data):
         """
         QUT/idcdmzpcr01/TSE/2330
-        {'AskPrice': [248.0, 248.5, 249.0, 249.5, 250.0], 'AskVolume': [355, 632, 630, 301, 429], 
+        {'AskPrice': [248.0, 248.5, 249.0, 249.5, 250.0], 'AskVolume': [355, 632, 630, 301, 429],
         'BidPrice': [247.5, 247.0, 246.5, 246.0, 245.5], 'BidVolume': [397, 389, 509, 703, 434],
          'Date': '2019/05/17', 'Time': '09:53:00.706928'}
 
         MKT/idcdmzpcr01/TSE/2330
-        {'Close': [248.0], 'Time': '09:53:00.706928', 'VolSum': [7023], 'Volume': [1]}
+        {'Close': [248.0], 'Time': '09:53:00.706928',
+            'VolSum': [7023], 'Volume': [1]}
         """
 
         tick = self.ticks.get(code, None)
