@@ -7,6 +7,7 @@ from datetime import datetime
 from threading import Thread
 from time import sleep
 import shioaji as sj
+from shioaji.order import Status as SinopacStatus
 from shioaji import constant
 
 from vnpy.trader.constant import (
@@ -38,6 +39,17 @@ EXCHANGE_VT2SINOPAC = {
     Exchange.TFE: "TAIFEX"
 }
 EXCHANGE_SINOPAC2VT = {v: k for k, v in EXCHANGE_VT2SINOPAC.items()}
+
+STATUS_SINOPAC2VT = {
+    SinopacStatus.Cancelled: Status.CANCELLED,
+    SinopacStatus.Failed: Status.REJECTED,
+    SinopacStatus.Filled: Status.ALLTRADED,
+    SinopacStatus.Filling: Status.PARTTRADED,
+    SinopacStatus.PreSubmitted: Status.SUBMITTING,
+    SinopacStatus.Submitted: Status.NOTTRADED,
+    SinopacStatus.PendingSubmit: Status.SUBMITTING,
+    SinopacStatus.Inactive: Status.SUBMITTING,
+}
 
 
 class SinopacGateway(BaseGateway):
@@ -82,22 +94,37 @@ class SinopacGateway(BaseGateway):
         self.api.update_status()
         trades = self.api.list_trades()
         for item in trades:
-            tradeid = item.status.order_id
-            if tradeid in self.trades:
-                continue
-            self.trades.add(tradeid)
-            trade = TradeData(
-                symbol=item.contract.code,
-                exchange=EXCHANGE_SINOPAC2VT[item.contract.exchange],
-                direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
-                tradeid=tradeid,
-                orderid=item.order.seqno,
-                price=float(item.order.price),
-                volume=float(item.order.quantity),
-                time=item.status.order_datetime,
-                gateway_name=self.gateway_name,
-            )
-            self.on_trade(trade)
+            if item.status in [SinopacStatus.Filling, SinopacStatus.Filled]:  # 成交
+                tradeid = item.status.order_id
+                if tradeid in self.trades:
+                    continue
+                self.trades.add(tradeid)
+                trade = TradeData(
+                    symbol=f'{item.contract.code} {item.contract.name}',
+                    exchange=EXCHANGE_SINOPAC2VT.get(item.contract.exchange, Exchange.TSE),
+                    direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
+                    tradeid=tradeid,
+                    orderid=item.order.seqno,
+                    price=float(item.order.price),
+                    volume=float(item.order.quantity),
+                    time=item.status.order_datetime,
+                    gateway_name=self.gateway_name,
+                )
+                self.on_trade(trade)
+            else:
+                order = OrderData(
+                    symbol=f'{item.contract.code} {item.contract.name}',
+                    exchange=EXCHANGE_SINOPAC2VT.get(item.contract.exchange, Exchange.TSE),
+                    orderid=item.order.seqno,
+                    direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
+                    price=float(item.order.price),
+                    volume=float(item.order.quantity),
+                    traded=float(item.status.deal_quantity),
+                    status=STATUS_SINOPAC2VT[item.status.status],
+                    time=item.status.order_datetime,
+                    gateway_name=self.gateway_name,
+                )
+                self.on_order(order)
 
     def query_data(self):
         """
@@ -131,7 +158,7 @@ class SinopacGateway(BaseGateway):
                              setting['憑證密碼'], setting['身份證字號'])
 
         self.api.quote.set_callback(self.quote_callback)
-        self.write_log("行情接口连接成功")
+        self.write_log("交易行情 - 連線成功")
         self.thread.start()
 
     def proc_account(self, data):
@@ -268,7 +295,7 @@ class SinopacGateway(BaseGateway):
         for item in data:
             pos = PositionData(
                 symbol=item['stock'],
-                exchange=EXCHANGE_SINOPAC2VT["TSE"],
+                exchange=EXCHANGE_SINOPAC2VT.get('TSE', Exchange.TSE),
                 direction=Direction.LONG if float(
                     item['real_qty']) >= 0 else Direction.SHORT,
                 volume=float(item['real_qty']) / 1000,
