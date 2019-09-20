@@ -272,7 +272,6 @@ class SinopacGateway(BaseGateway):
                                    order_type=order_type, first_sell=first_sell)
 
         trade = self.api.place_order(self.code2contract[req.symbol], order)
-        self.write_log(str(order))
         self.write_log(str(trade))
         order = req.create_order_data(order.seqno, self.gateway_name)
         self.write_log(str(order))
@@ -294,7 +293,7 @@ class SinopacGateway(BaseGateway):
         data = self.api.get_stock_account_unreal_profitloss().data()["summary"]
         for item in data:
             pos = PositionData(
-                symbol=item['stock'],
+                symbol=f"{item['stock']} {item['stocknm']}",
                 exchange=EXCHANGE_SINOPAC2VT.get('TSE', Exchange.TSE),
                 direction=Direction.LONG if float(
                     item['real_qty']) >= 0 else Direction.SHORT,
