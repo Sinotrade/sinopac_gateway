@@ -16,7 +16,8 @@ from vnpy.trader.constant import (
     Product,
     OptionType,
     Status,
-    OrderType
+    OrderType,
+    Offset
 )
 from vnpy.trader.event import EVENT_TIMER
 from vnpy.trader.gateway import BaseGateway
@@ -266,7 +267,7 @@ class SinopacGateway(BaseGateway):
             action = constant.ACTION_BUY if req.direction == Direction.LONG else constant.ACTION_SELL
             price_type = constant.STOCK_PRICE_TYPE_LIMITPRICE
             order_type = constant.STOCK_ORDER_TYPE_COMMON
-            first_sell = constant.STOCK_FIRST_SELL_NO
+            first_sell = constant.STOCK_FIRST_SELL_YES if req.offset == Offset.CLOSETODAY else constant.STOCK_FIRST_SELL_NO
             order = self.api.Order(price=req.price, quantity=int(req.volume), action=action,
                                    price_type=price_type,
                                    order_type=order_type, first_sell=first_sell)
