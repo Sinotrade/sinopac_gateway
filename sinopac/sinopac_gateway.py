@@ -149,7 +149,7 @@ class SinopacGateway(BaseGateway):
             self.write_log(f"登入失败. [{exc}]")
             return
         self.write_log(f"登入成功. [{userid}]")
-
+        self.api.set_default_account(self.api.list_accounts()[1])
         self.query_contract()
         self.write_log("合约查询成功")
         self.query_position()
