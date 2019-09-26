@@ -9,6 +9,8 @@ from time import sleep
 import shioaji as sj
 from shioaji.order import Status as SinopacStatus
 from shioaji import constant
+from shioaji.account import StockAccount, FutureAccount
+
 
 from vnpy.trader.constant import (
     Direction,
@@ -63,7 +65,9 @@ class SinopacGateway(BaseGateway):
         "密碼": "",
         "憑證檔案路徑": "",
         "憑證密碼": "",
-        "環境": ["正式", "模擬"]
+        "環境": ["正式", "模擬"],
+        "預設現貨帳號": "0",
+        "預設期貨帳號": "0"
     }
 
     exchanges = list(EXCHANGE_SINOPAC2VT.values())
@@ -151,7 +155,8 @@ class SinopacGateway(BaseGateway):
             self.write_log(f"登入失败. [{exc}]")
             return
         self.write_log(f"登入成功. [{userid}]")
-        self.api.set_default_account(self.api.list_accounts()[1])
+        self.select_default_account(setting.get(
+            '預設現貨帳號', 0), setting.get('預設期貨帳號', 0))
         self.query_contract()
         self.write_log("合约查询成功")
         self.query_position()
@@ -163,6 +168,31 @@ class SinopacGateway(BaseGateway):
         self.api.quote.set_callback(self.quote_callback)
         self.write_log("交易行情 - 連線成功")
         self.thread.start()
+
+    def select_default_account(self, select_stock_number, select_futures_number):
+        stock_account_count = 0
+        futures_account_count = 0
+        for acc in self.api.list_accounts():
+            if isinstance(acc, StockAccount):
+                self.write_log(
+                    f'股票帳號: [{stock_account_count}] - {acc.broker_id}-{acc.account_id} {acc.username}')
+                stock_account_count += 1
+            if isinstance(acc, FutureAccount):
+                self.write_log(
+                    f'期貨帳號: [{futures_account_count}] - {acc.broker_id}-{acc.account_id} {acc.username}')
+                futures_account_count += 1
+
+        if stock_account_count >= 2:
+            acc = self.api.list_accounts()[int(select_stock_number)]
+            self.api.set_default_account(acc)
+            self.write_log(
+                f"***預設 現貨下單帳號 - [{select_stock_number}] {acc.broker_id}-{acc.account_id} {acc.username}")
+
+        if futures_account_count >= 2:
+            acc = self.api.list_accounts()[int(select_futures_number)]
+            self.api.set_default_account(acc)
+            self.write_log(
+                f"***預設 期貨下單帳號 - [{select_futures_number}] {acc.broker_id}-{acc.account_id} {acc.username}")
 
     def proc_account(self, data):
         pass
