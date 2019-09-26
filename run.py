@@ -8,7 +8,7 @@ from vnpy.app.data_recorder import DataRecorderApp
 from vnpy.app.spread_trading import SpreadTradingApp
 from vnpy.app.script_trader import ScriptTraderApp
 from vnpy.app.risk_manager import RiskManagerApp
-from sinopac import SinopacGateway
+from vnpy.gateway.sinopac import SinopacGateway
 
 
 def main():
