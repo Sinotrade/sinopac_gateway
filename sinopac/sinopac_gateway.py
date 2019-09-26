@@ -81,7 +81,7 @@ class SinopacGateway(BaseGateway):
         self.trades = set()
 
         self.count = 0
-        self.interval = 10
+        self.interval = 20
 
         self.thread = Thread(target=self.query_data)
         self.query_funcs = [self.query_position, self.query_trade]
@@ -102,7 +102,8 @@ class SinopacGateway(BaseGateway):
                 self.trades.add(tradeid)
                 trade = TradeData(
                     symbol=f'{item.contract.code} {item.contract.name}',
-                    exchange=EXCHANGE_SINOPAC2VT.get(item.contract.exchange, Exchange.TSE),
+                    exchange=EXCHANGE_SINOPAC2VT.get(
+                        item.contract.exchange, Exchange.TSE),
                     direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
                     tradeid=tradeid,
                     orderid=item.order.seqno,
@@ -115,7 +116,8 @@ class SinopacGateway(BaseGateway):
             else:
                 order = OrderData(
                     symbol=f'{item.contract.code} {item.contract.name}',
-                    exchange=EXCHANGE_SINOPAC2VT.get(item.contract.exchange, Exchange.TSE),
+                    exchange=EXCHANGE_SINOPAC2VT.get(
+                        item.contract.exchange, Exchange.TSE),
                     orderid=item.order.seqno,
                     direction=Direction.LONG if item.order.action == "Buy" else Direction.SHORT,
                     price=float(item.order.price),
@@ -191,10 +193,6 @@ class SinopacGateway(BaseGateway):
                 )
                 self.on_contract(data)
                 self.code2contract[contract.code] = contract
-                if not self.code2contract.get("ALL", None):
-                    from shioaji.contracts import Future
-                    fake_contract = Future(code="*")
-                    self.code2contract["ALL"] = fake_contract
 
         for category in self.api.Contracts.Options:
             for contract in category:
@@ -215,10 +213,6 @@ class SinopacGateway(BaseGateway):
                 )
                 self.on_contract(data)
                 self.code2contract[contract.code] = contract
-                if not self.code2contract.get("ALL", None):
-                    from shioaji.contracts import Future
-                    fake_contract = Future(code="*")
-                    self.code2contract["ALL"] = fake_contract
 
         for category in self.api.Contracts.Stocks:
             for contract in category:
@@ -299,7 +293,8 @@ class SinopacGateway(BaseGateway):
                 direction=Direction.LONG if float(
                     item['real_qty']) >= 0 else Direction.SHORT,
                 volume=float(item['real_qty']) / 1000,
-                frozen=float(item['real_qty']) / 1000 - float(item['qty']) / 1000,
+                frozen=float(item['real_qty']) / 1000 -
+                float(item['qty']) / 1000,
                 price=float(item['avgprice']),
                 pnl=float(item['unreal']),
                 yd_volume=float(item['qty']) / 1000,
@@ -345,6 +340,7 @@ class SinopacGateway(BaseGateway):
             elif realtime_type == "QUT":
                 tick = self.qute_stock_QUT(topics[3], data)
             if tick:
+                tick.open_interest = 0
                 self.on_tick(copy(tick))
         except Exception as e:
             exc_type, _, exc_tb = sys.exc_info()
@@ -410,6 +406,7 @@ class SinopacGateway(BaseGateway):
         tick.volume = data["VolSum"][0]
         tick.last_price = data["Close"][0]
         tick.limit_up = 0
+        tick.open_interest = 0
         tick.limit_down = 0
         tick.open_price = data["Open"]
         tick.high_price = data["High"][0]
@@ -446,6 +443,7 @@ class SinopacGateway(BaseGateway):
         tick.volume = data["VolSum"][0]
         tick.last_price = data["Close"][0]
         tick.limit_up = 0
+        tick.open_interest = 0
         tick.limit_down = 0
         tick.open_price = data["Close"][0] if tick.open_price == 0 else tick.open_price
         tick.high_price = data["Close"][0] if data["Close"][0] > tick.high_price else tick.high_price
